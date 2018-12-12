@@ -109,6 +109,7 @@ class SQLiteDataModel {
                 query += "CREATE TABLE \(name)(\(columns))"// WITHOUT ROWID"
             }
         }
+        print(query)
         var errMsg: UnsafeMutablePointer<Int8>?
         let result = sqlite3_exec(db, query, nil, nil, &errMsg)
         guard result == SQLITE_OK else {

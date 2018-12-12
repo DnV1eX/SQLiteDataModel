@@ -7,6 +7,7 @@
 
 import XCTest
 @testable import SQLiteDataModel
+import SQift
 
 
 class SQLiteDataModelTests: XCTestCase {
@@ -23,5 +24,12 @@ class SQLiteDataModelTests: XCTestCase {
     func testDBCreation() throws {
         let model = try SQLiteDataModel(coreDataModel: SQLiteDataModelTests.modelURL, sqliteDB: SQLiteDataModelTests.dbURL)
         try model.create()
+        let db = try Connection(storageLocation: .onDisk(SQLiteDataModelTests.dbURL.path))
+        try db.execute("INSERT INTO Spacecraft VALUES(1, 'Vostok')")
+        let row = try db.query("SELECT * FROM Spacecraft")
+        XCTAssertEqual(row?.columnCount, 2)
+        XCTAssertEqual(row?["crewSize"], 1)
+        XCTAssertEqual(row?["name"], "Vostok")
+
     }
 }
