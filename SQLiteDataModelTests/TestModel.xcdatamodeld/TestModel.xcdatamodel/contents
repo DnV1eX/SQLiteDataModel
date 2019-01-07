@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="14460.32" systemVersion="18B75" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="14460.32" systemVersion="18B75" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="1">
+    <entity name="Cathedral" representedClassName="Cathedral" syncable="YES" codeGenerationType="class">
+        <attribute name="denomination" optional="YES" attributeType="String" syncable="YES"/>
+    </entity>
+    <entity name="Cosmodrome" representedClassName="Cosmodrome" syncable="YES" codeGenerationType="class">
+        <attribute name="name" optional="YES" attributeType="String" syncable="YES"/>
+    </entity>
     <entity name="Spacecraft" representedClassName="Spacecraft" syncable="YES" codeGenerationType="class">
         <attribute name="crewSize" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" syncable="YES"/>
+        <attribute name="launchMass" attributeType="Decimal" syncable="YES"/>
         <attribute name="name" optional="YES" attributeType="String" syncable="YES"/>
     </entity>
     <elements>
-        <element name="Spacecraft" positionX="-63" positionY="-18" width="128" height="28"/>
+        <element name="Spacecraft" positionX="-63" positionY="-18" width="128" height="88"/>
+        <element name="Cosmodrome" positionX="-63" positionY="0" width="128" height="60"/>
+        <element name="Cathedral" positionX="-27" positionY="36" width="128" height="60"/>
     </elements>
 </model>

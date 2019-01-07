@@ -46,6 +46,7 @@
 		EC3F21CB21BCA96A00696A23 /* SQLiteDataModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteDataModelTests.swift; sourceTree = "<group>"; };
 		EC3F21CD21BCA96A00696A23 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EC3F21D821C1598B00696A23 /* SQift.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SQift.framework; path = Carthage/Build/Mac/SQift.framework; sourceTree = "<group>"; };
+		EC3F21DC21C2B58000696A23 /* TestModel 2.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "TestModel 2.xcdatamodel"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -311,6 +312,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
 		};
@@ -556,9 +558,10 @@
 		EC3F21B521BCA38C00696A23 /* TestModel.xcdatamodeld */ = {
 			isa = XCVersionGroup;
 			children = (
+				EC3F21DC21C2B58000696A23 /* TestModel 2.xcdatamodel */,
 				EC3F21B621BCA38C00696A23 /* TestModel.xcdatamodel */,
 			);
-			currentVersion = EC3F21B621BCA38C00696A23 /* TestModel.xcdatamodel */;
+			currentVersion = EC3F21DC21C2B58000696A23 /* TestModel 2.xcdatamodel */;
 			path = TestModel.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;
