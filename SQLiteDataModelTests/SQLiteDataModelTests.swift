@@ -25,19 +25,23 @@ class SQLiteDataModelTests: XCTestCase {
     func testDBCreation() throws {
         
         let model = try SQLiteDataModel(bundle: Bundle(for: SQLiteDataModelTests.self), sqliteDB: SQLiteDataModelTests.dbURL)
-        try model.create(version: 1)
+        try model.create(by: model.loadModel(1))
         XCTAssertEqual(try model.currentVersion(), 1)
         
-        try db.execute("INSERT INTO Spacecraft(name, crewSize, launchMass) VALUES('Vostok', 1, 4725)")
-        var row = try db.query("SELECT * FROM Spacecraft")
-        XCTAssertEqual(row?.columnCount, 3)
+        try db.execute("INSERT INTO Country(name) VALUES ('USA'), ('USSR'), ('Russia'), ('China'), ('India')")
+        
+        let subquery = "SELECT rowid FROM Country WHERE name = 'USSR'"
+        try db.execute("INSERT INTO Spacecraft(name, crewSize, launchMass, origin) VALUES ('Vostok', 1, 4725, (\(subquery)))")
+        var row = try db.query("SELECT *, c.name AS country FROM Spacecraft, Country AS c ON origin = c.rowid")
+        XCTAssertEqual(row?.columnCount, 7)
         XCTAssertEqual(row?["crewSize"], 1)
         XCTAssertEqual(row?["name"], "Vostok")
         XCTAssertEqual(row?["launchMass"], 4725)
+        XCTAssertEqual(row?["country"], "USSR")
+
+        try db.execute("INSERT INTO Cosmodrome(name) VALUES ('Baikonur')")
         
-        try db.execute("INSERT INTO Cosmodrome(name) VALUES('Baikonur')")
-        
-        try model.migrate()
+        try model.migrate(to: model.loadModel())
         XCTAssertEqual(try model.currentVersion(), 2)
         
         row = try db.query("SELECT * FROM Spaceport")
@@ -45,6 +49,8 @@ class SQLiteDataModelTests: XCTestCase {
         XCTAssertEqual(row?["name"], "Baikonur")
         
         XCTAssertNoThrow(try db.query("SELECT * FROM Manufacturer"))
-        XCTAssertThrowsError(try db.query("SELECT * FROM Cathedral"))
+        XCTAssertThrowsError(try db.query("SELECT * FROM Country"))
+        
+//        try db.execute("INSERT INTO Manufacturer(name) VALUES ('OKB-1'), ('USSR'), ('Russia'), ('China'), ('India')")
     }
 }

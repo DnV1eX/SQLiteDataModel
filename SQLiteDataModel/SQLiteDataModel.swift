@@ -3,13 +3,26 @@
 //  SQLiteDataModel
 //
 //  Created by Alexey Demin on 2018-12-07.
+//  Copyright © 2018 Alexey Demin. All rights reserved.
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
 //
 
 import CoreData
 import SQLite3
 
 
-class SQLiteDataModel {
+public class SQLiteDataModel {
     
     enum Error: LocalizedError {
         case noDataModelResource(with: String?, in: Bundle)
@@ -50,8 +63,10 @@ class SQLiteDataModel {
     
 //    let dbQueue = DispatchQueue(label: "SQLiteDataModel DB Queue")
     
+    lazy var modelName: String = { modelURL.deletingPathExtension().lastPathComponent }()
+
     
-    init(coreDataModelName modelName: String? = nil, bundle: Bundle = Bundle.main, sqliteDB dbURL: URL) throws {
+    public init(coreDataModelName modelName: String? = nil, bundle: Bundle = Bundle.main, sqliteDB dbURL: URL) throws {
         
         guard let modelURL = bundle.url(forResource: modelName, withExtension: "momd") else {
             throw Error.noDataModelResource(with: modelName, in: bundle)
@@ -71,7 +86,8 @@ class SQLiteDataModel {
         self.db = db
         
         try execute("PRAGMA journal_mode = WAL")
-        
+        try execute("PRAGMA foreign_keys = ON")
+
 //        let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
 //        try coordinator.addPersistentStore(ofType: NSSQLiteStoreType, configurationName: nil, at: dbURL, options: nil)
 //        print(coordinator.persistentStore(for: dbURL)?.metadata)
@@ -82,25 +98,95 @@ class SQLiteDataModel {
     }
     
     
-    lazy var modelName: String = { modelURL.deletingPathExtension().lastPathComponent }()
+    public func currentVersion() throws -> Int {
+        
+//        let query = "SELECT version, max(timestamp) FROM schema_migrations"
+        let query = "SELECT version FROM schema_migrations ORDER BY rowid DESC LIMIT 1"
+        guard let versionString = try request(query).first?["version"], let version = Int(versionString) else {
+            throw Error.unknownSQLiteSchemaVersion
+        }
+        
+        return version
+    }
+    
+    
+    public func setup(version: Int? = nil) throws {
+        
+        let model = try loadModel(version)
+        guard let currentVersion = try? currentVersion() else {
+            try create(by: model)
+            return
+        }
+        if model.version != currentVersion {
+            try migrate(to: model)
+        }
+    }
+    
+    
+    func create(by model: NSManagedObjectModel) throws {
+        
+        for entity in model.entities {
+//            print(entity)
+            try createTable(for: entity)
+        }
+//        let timestamp = "STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')"
+        let query = "CREATE TABLE schema_migrations(version INTEGER NOT NULL, timestamp NUMERIC NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        try execute(query)
+        try insertVersion(model.version)
+    }
+    
+    
+    func migrate(to model: NSManagedObjectModel) throws {
+        
+        let currentVersion = try self.currentVersion()
+        let currentModel = try loadModel(currentVersion)
+        let mappingModel = try NSMappingModel.inferredMappingModel(forSourceModel: currentModel, destinationModel: model)
+//        print(mappingModel)
+        for entityMapping in mappingModel.entityMappings {
+            let sourceEntityName: String! = entityMapping.sourceEntityName
+            let destinationEntityName: String! = entityMapping.destinationEntityName
+            
+            switch entityMapping.mappingType {
+            case .addEntityMappingType:
+                try createTable(for: model.entitiesByName[destinationEntityName]!)
+            case .removeEntityMappingType:
+                try dropTable(sourceEntityName)
+            case .copyEntityMappingType:
+            break // leave the table as-is
+            case .transformEntityMappingType:
+                if sourceEntityName != destinationEntityName {
+                    try renameTable(sourceEntityName, to: destinationEntityName)
+                }
+                
+//                guard let userInfo = entityMapping.userInfo as? [String: Any] else { continue }
+//
+//                let addedProperties = userInfo["addedProperties"] as? [String]
+//                let removedProperties = userInfo["removedProperties"] as? [String]
+//                let mappedProperties = userInfo["mappedProperties"] as? [String]
+//                for propertyMapping in entityMapping.attributeMappings ?? [] {
+//                    print(propertyMapping)
+//                }
+            case .customEntityMappingType, .undefinedEntityMappingType:
+                throw Error.unsupportedMigrationType
+            @unknown default: break
+            }
+        }
+        try insertVersion(model.version)
+    }
 
     
-    private func loadModel(_ version: Int? = nil) throws -> (model: NSManagedObjectModel, version: Int) {
+    func loadModel(_ version: Int? = nil) throws -> NSManagedObjectModel {
         
         let url = version.map { modelURL.appendingPathComponent(modelName + ($0 == 1 ? "" : " \($0)")).appendingPathExtension("mom") } ?? modelURL
         guard let model = NSManagedObjectModel(contentsOf: url) else {
             throw Error.unableToLoadCoreDataModel(at: url)
         }
         
-        guard let modelVersionIdentifier = model.versionIdentifiers.first as? String, let modelVersion = Int(modelVersionIdentifier) else {
-            throw Error.invalidModelVersion(nil, expected: version)
+        guard let modelVersion = model.version, version == modelVersion || version == nil else {
+            throw Error.invalidModelVersion(model.version, expected: version)
         }
         
-        if let version = version, version != modelVersion {
-            throw Error.invalidModelVersion(modelVersion, expected: version)
-        }
-        
-        return (model, modelVersion)
+        return model
     }
     
     
@@ -156,67 +242,100 @@ class SQLiteDataModel {
 
     private func createTable(for entity: NSEntityDescription, name: String? = nil) throws {
         
-        let name = name ?? entity.name!
+        let childTable = name ?? entity.name!
         
         guard !entity.properties.isEmpty else {
-            throw Error.zeroColumnTable(name)
+            throw Error.zeroColumnTable(childTable)
         }
         
-        var columns = ""
+        var queries = [String]()
+        var columns = [String]()
+        var constraints = [String]()
+        
         for property in entity.properties {
-            print(property)
+//            print(property)
             switch property {
             case let attribute as NSAttributeDescription:
-                if !columns.isEmpty {
-                    columns += ", "
-                }
-                columns += attribute.name
+                var column = #""\#(attribute.name)""#
                 switch attribute.attributeType {
                 case .integer16AttributeType,
                      .integer32AttributeType,
                      .integer64AttributeType,
                      .objectIDAttributeType:
-                    columns += " INTEGER"
+                    column += " INTEGER"
                 case .stringAttributeType,
                      .URIAttributeType,
                      .UUIDAttributeType:
-                    columns += " TEXT"
+                    column += " TEXT"
                 case .binaryDataAttributeType:
-                    columns += " BLOB"
+                    column += " BLOB"
                 case .doubleAttributeType,
                      .floatAttributeType:
-                    columns += " REAL"
+                    column += " REAL"
                 case .decimalAttributeType,
                      .dateAttributeType,
                      .booleanAttributeType:
-                    columns += " NUMERIC"
+                    column += " NUMERIC"
                 case .transformableAttributeType,
                      .undefinedAttributeType: break
+                @unknown default: break
                 }
                 if !attribute.isOptional {
-                    columns += " NOT NULL"
+                    column += " NOT NULL"
                 }
                 if let defaultValue = attribute.defaultValue {
-                    columns += " DEFAULT \(defaultValue)"
+                    column += " DEFAULT \(defaultValue)"
                 }
-//            case let relationship as NSRelationshipDescription:
+                columns.append(column)
+                
+            case let relationship as NSRelationshipDescription:
+                let parentTable = relationship.destinationEntity!.name!
+                let parentKey = relationship.userInfo?["parent"] as? String
+                let childKey = relationship.userInfo?["child"] as? String
+                if relationship.isToMany {
+                    let column1 = #""\#(childTable)" REFERENCES "\#(childTable)""# + (childKey.map { "(\($0))" } ?? "")
+                    let column2 = #""\#(parentTable)" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                    let key = #"PRIMARY KEY("\#(childTable)", "\#(parentTable)")"#
+                    let query = #"CREATE TABLE "\#(relationship.name)"(\#(column1), \#(column2), \#(key)) WITHOUT ROWID"#
+                    queries.append(query)
+                }
+                else if let childKey = childKey {
+                    var constraint = "FOREIGN KEY(\(childKey))"
+                    constraint += #" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                    constraints.append(constraint)
+                }
+                else {
+                    var column = #""\#(relationship.name)""#
+                    if !relationship.isOptional {
+                        column += " NOT NULL"
+                    }
+                    column += #" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                    columns.append(column)
+                }
+                
             default: break
             }
         }
-        let query = "CREATE TABLE \"\(name)\"(\(columns))"
-        try execute(query)
+        
+        constraints += (entity.uniquenessConstraints as! [[String]]).enumerated().map { "\($0.0 == 0 ? "PRIMARY KEY" : "UNIQUE")(\($0.1.joined(separator: ",")))" }
+        
+        var query = #"CREATE TABLE "\#(childTable)"(\#((columns + constraints).joined(separator: ", ")))"#
+        if !entity.uniquenessConstraints.isEmpty { query += " WITHOUT ROWID" }
+        queries.insert(query, at: 0)
+        
+        try execute(queries.joined(separator: ";\n"))
     }
     
     
     private func dropTable(_ name: String) throws {
         
-        try execute("DROP TABLE \"\(name)\"")
+        try execute(#"DROP TABLE "\#(name)""#)
     }
     
     
     private func renameTable(_ name: String, to newName: String) throws {
         
-        try execute("ALTER TABLE \"\(name)\" RENAME TO \"\(newName)\"")
+        try execute(#"ALTER TABLE "\#(name)" RENAME TO "\#(newName)""#)
     }
     
     /// Generalized ALTER TABLE procedure will work even if the schema change causes the information stored in the table to change, e.g. dropping a column, changing the order of columns, adding or removing a UNIQUE constraint or PRIMARY KEY, adding CHECK or FOREIGN KEY or NOT NULL constraints, or changing the datatype for a column. https://www.sqlite.org/lang_altertable.html#otheralter
@@ -235,69 +354,13 @@ class SQLiteDataModel {
         try execute("INSERT INTO schema_migrations(version) VALUES(\(version))")
     }
     
+}
+
+
+
+extension NSManagedObjectModel {
     
-    func create(version: Int? = nil) throws {
-        
-        let (model, version) = try loadModel(version)
-        
-        for entity in model.entities {
-            print(entity)
-            try createTable(for: entity)
-        }
-//        let timestamp = "STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')"
-        let query = "CREATE TABLE schema_migrations(version INTEGER NOT NULL, timestamp NUMERIC NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-        try execute(query)
-        try insertVersion(version)
-    }
-    
-    
-    func currentVersion() throws -> Int {
-        
-//        let query = "SELECT version, max(timestamp) FROM schema_migrations"
-        let query = "SELECT version FROM schema_migrations ORDER BY rowid DESC LIMIT 1"
-        guard let versionString = try request(query).first?["version"], let version = Int(versionString) else {
-            throw Error.unknownSQLiteSchemaVersion
-        }
-        
-        return version
-    }
-    
-    
-    func migrate(to version: Int? = nil) throws {
-        
-        let (model, version) = try loadModel(version)
-        let currentVersion = try self.currentVersion()
-        let (currentModel, _) = try loadModel(currentVersion)
-        let mappingModel = try NSMappingModel.inferredMappingModel(forSourceModel: currentModel, destinationModel: model)
-        print(mappingModel)
-        for entityMapping in mappingModel.entityMappings {
-            let sourceEntityName: String! = entityMapping.sourceEntityName
-            let destinationEntityName: String! = entityMapping.destinationEntityName
-            
-            switch entityMapping.mappingType {
-            case .addEntityMappingType:
-                try createTable(for: model.entitiesByName[destinationEntityName]!)
-            case .removeEntityMappingType:
-                try dropTable(sourceEntityName)
-            case .copyEntityMappingType:
-                break // leave the table as-is
-            case .transformEntityMappingType:
-                if sourceEntityName != destinationEntityName {
-                    try renameTable(sourceEntityName, to: destinationEntityName)
-                }
-                
-//                guard let userInfo = entityMapping.userInfo as? [String: Any] else { continue }
-//
-//                let addedProperties = userInfo["addedProperties"] as? [String]
-//                let removedProperties = userInfo["removedProperties"] as? [String]
-//                let mappedProperties = userInfo["mappedProperties"] as? [String]
-//                for propertyMapping in entityMapping.attributeMappings ?? [] {
-//                    print(propertyMapping)
-//                }
-            case .customEntityMappingType, .undefinedEntityMappingType:
-                throw Error.unsupportedMigrationType
-            }
-        }
-        try insertVersion(version)
+    var version: Int! {
+        return (versionIdentifiers.first as? String).flatMap(Int.init)
     }
 }
