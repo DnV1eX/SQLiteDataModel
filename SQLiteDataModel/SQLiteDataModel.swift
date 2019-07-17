@@ -290,18 +290,26 @@ public class SQLiteDataModel {
                 
             case let relationship as NSRelationshipDescription:
                 let parentTable = relationship.destinationEntity!.name!
-                let parentKey = relationship.userInfo?["parent"] as? String
-                let childKey = relationship.userInfo?["child"] as? String
+                let parentKey = (relationship.userInfo?["parent"] as? String).map { "(\($0))" } ?? ""
+                let childKey = (relationship.userInfo?["child"] as? String).map { "(\($0))" } ?? ""
+                
+                let onDeleteAction: String
+                switch relationship.deleteRule {
+                case .denyDeleteRule: onDeleteAction = " ON DELETE RESTRICT"
+                case .nullifyDeleteRule: onDeleteAction = " ON DELETE SET NULL"
+                case .cascadeDeleteRule: onDeleteAction = " ON DELETE CASCADE"
+                default: onDeleteAction = ""
+                }
                 if relationship.isToMany {
-                    let column1 = #""\#(childTable)" REFERENCES "\#(childTable)""# + (childKey.map { "(\($0))" } ?? "")
-                    let column2 = #""\#(parentTable)" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                    let column1 = #""\#(childTable)" REFERENCES "\#(childTable)""# + childKey + onDeleteAction
+                    let column2 = #""\#(parentTable)" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
                     let key = #"PRIMARY KEY("\#(childTable)", "\#(parentTable)")"#
                     let query = #"CREATE TABLE "\#(relationship.name)"(\#(column1), \#(column2), \#(key)) WITHOUT ROWID"#
                     queries.append(query)
                 }
-                else if let childKey = childKey {
-                    var constraint = "FOREIGN KEY(\(childKey))"
-                    constraint += #" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                else if !childKey.isEmpty {
+                    var constraint = "FOREIGN KEY" + childKey
+                    constraint += #" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
                     constraints.append(constraint)
                 }
                 else {
@@ -309,7 +317,7 @@ public class SQLiteDataModel {
                     if !relationship.isOptional {
                         column += " NOT NULL"
                     }
-                    column += #" REFERENCES "\#(parentTable)""# + (parentKey.map { "(\($0))" } ?? "")
+                    column += #" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
                     columns.append(column)
                 }
                 
