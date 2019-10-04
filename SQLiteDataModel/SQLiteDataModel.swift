@@ -66,7 +66,7 @@ public class SQLiteDataModel {
     lazy var modelName: String = { modelURL.deletingPathExtension().lastPathComponent }()
 
     
-    public init(coreDataModelName modelName: String? = nil, bundle: Bundle = Bundle.main, sqliteDB dbURL: URL) throws {
+    public init(coreDataModelName modelName: String? = nil, bundle: Bundle = Bundle.main, sqliteDB dbURL: URL, profile: Bool = false) throws {
         
         guard let modelURL = bundle.url(forResource: modelName, withExtension: "momd") else {
             throw Error.noDataModelResource(with: modelName, in: bundle)
@@ -84,7 +84,8 @@ public class SQLiteDataModel {
         }
         
         self.db = db
-        
+        if profile { trace(2) }
+
         try execute("PRAGMA journal_mode = WAL")
         try execute("PRAGMA foreign_keys = ON")
 
@@ -190,6 +191,8 @@ public class SQLiteDataModel {
     }
     
     
+    // MARK: - SQLite3 Library Wrappers
+
     private func execute(_ query: String) throws {
         
         var errMsg: UnsafeMutablePointer<Int8>?
@@ -239,6 +242,39 @@ public class SQLiteDataModel {
         }
     }
     
+    
+    private func trace(_ mask: UInt32 = 0xF) {
+        
+        sqlite3_trace_v2(db, mask, { event, _, p1, p2 in
+            switch Int32(event) {
+            case SQLITE_TRACE_STMT:
+                guard let statement = sqlite3_expanded_sql(OpaquePointer(p1)), let sql = p2?.assumingMemoryBound(to: CChar.self) else { break }
+                
+                print("SQLite statement: \(String(cString: statement)) (\(String(cString: sql)))")
+                
+            case SQLITE_TRACE_PROFILE:
+                guard let statement = sqlite3_expanded_sql(OpaquePointer(p1)), let duration = p2?.load(as: Int64.self) else { break }
+                
+                print("SQLite profile: \(String(cString: statement)) (\(Double(duration) * 1e-9) seconds)")
+                
+            case SQLITE_TRACE_ROW:
+                guard let statement = sqlite3_expanded_sql(OpaquePointer(p1)) else { break }
+                
+                print("SQLite row: \(String(cString: statement))")
+                
+            case SQLITE_TRACE_CLOSE:
+                guard let connection = p1 else { break }
+                
+                print("SQLite connection \"\(connection)\" closed")
+                
+            default: break
+            }
+            return 0
+        }, nil)
+    }
+    
+    
+    // MARK: - SQL Command Wrappers
 
     private func createTable(for entity: NSEntityDescription, name: String? = nil) throws {
         
@@ -325,7 +361,7 @@ public class SQLiteDataModel {
             }
         }
         
-        constraints += (entity.uniquenessConstraints as! [[String]]).enumerated().map { "\($0.0 == 0 ? "PRIMARY KEY" : "UNIQUE")(\($0.1.joined(separator: ",")))" }
+        constraints += (entity.uniquenessConstraints as! [[String]]).enumerated().map { "\($0.0 == 0 ? "PRIMARY KEY" : "UNIQUE")(\($0.1.map { "\"\($0)\"" }.joined(separator: ",")))" }
         
         var query = #"CREATE TABLE "\#(childTable)"(\#((columns + constraints).joined(separator: ", ")))"#
         if !entity.uniquenessConstraints.isEmpty { query += " WITHOUT ROWID" }

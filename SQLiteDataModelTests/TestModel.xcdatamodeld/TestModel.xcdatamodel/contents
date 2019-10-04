@@ -1,21 +1,32 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="14490.99" systemVersion="18F132" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="1">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="14492.1" systemVersion="18F132" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="1">
     <entity name="Cosmodrome" representedClassName="Cosmodrome" syncable="YES">
         <attribute name="name" optional="YES" attributeType="String" syncable="YES"/>
     </entity>
     <entity name="Country" representedClassName="Country" syncable="YES">
-        <attribute name="flag" optional="YES" attributeType="URI" syncable="YES"/>
+        <attribute name="flag" optional="YES" attributeType="String" syncable="YES"/>
         <attribute name="name" attributeType="String" syncable="YES"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="name"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
     </entity>
     <entity name="Spacecraft" representedClassName="Spacecraft" syncable="YES">
         <attribute name="crewSize" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES" syncable="YES"/>
+        <attribute name="firstFlight" optional="YES" attributeType="String" syncable="YES"/>
         <attribute name="launchMass" attributeType="Decimal" syncable="YES"/>
-        <attribute name="name" optional="YES" attributeType="String" syncable="YES"/>
+        <attribute name="name" attributeType="String" syncable="YES"/>
         <relationship name="origin" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Country" syncable="YES"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="name"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
     </entity>
     <elements>
         <element name="Cosmodrome" positionX="55.80078125" positionY="-88.8359375" width="128" height="60"/>
         <element name="Country" positionX="-27" positionY="36" width="128" height="75"/>
-        <element name="Spacecraft" positionX="-192.03515625" positionY="-96.24609375" width="128" height="105"/>
+        <element name="Spacecraft" positionX="-192.03515625" positionY="-96.24609375" width="128" height="120"/>
     </elements>
 </model>
