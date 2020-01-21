@@ -51,7 +51,7 @@ public class SQLiteDataModel {
             case .unsupportedMigrationType:
                 return "Unsupported migration type"
             case .zeroColumnTable(let name):
-                return "Model entity \"\(name)\" must contain attributes"
+                return "Model entity \(name) must contain attributes"
             }
         }
     }
@@ -153,7 +153,7 @@ public class SQLiteDataModel {
             case .removeEntityMappingType:
                 try dropTable(sourceEntityName)
             case .copyEntityMappingType:
-            break // leave the table as-is
+                break // leave the table as-is
             case .transformEntityMappingType:
                 if sourceEntityName != destinationEntityName {
                     try renameTable(sourceEntityName, to: destinationEntityName)
@@ -278,7 +278,7 @@ public class SQLiteDataModel {
 
     private func createTable(for entity: NSEntityDescription, name: String? = nil) throws {
         
-        let childTable = name ?? entity.name!
+        let childTable = (name ?? entity.name!).quoted
         
         guard !entity.properties.isEmpty else {
             throw Error.zeroColumnTable(childTable)
@@ -292,7 +292,7 @@ public class SQLiteDataModel {
 //            print(property)
             switch property {
             case let attribute as NSAttributeDescription:
-                var column = #""\#(attribute.name)""#
+                var column = attribute.name.quoted
                 switch attribute.attributeType {
                 case .integer16AttributeType,
                      .integer32AttributeType,
@@ -325,7 +325,7 @@ public class SQLiteDataModel {
                 columns.append(column)
                 
             case let relationship as NSRelationshipDescription:
-                let parentTable = relationship.destinationEntity!.name!
+                let parentTable = relationship.destinationEntity!.name!.quoted
                 let parentKey = (relationship.userInfo?["parent"] as? String).map { "(\($0))" } ?? ""
                 let childKey = (relationship.userInfo?["child"] as? String).map { "(\($0))" } ?? ""
                 
@@ -337,23 +337,23 @@ public class SQLiteDataModel {
                 default: onDeleteAction = ""
                 }
                 if relationship.isToMany {
-                    let column1 = #""\#(childTable)" REFERENCES "\#(childTable)""# + childKey + onDeleteAction
-                    let column2 = #""\#(parentTable)" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
-                    let key = #"PRIMARY KEY("\#(childTable)", "\#(parentTable)")"#
-                    let query = #"CREATE TABLE "\#(relationship.name)"(\#(column1), \#(column2), \#(key)) WITHOUT ROWID"#
+                    let column1 = "\(childTable) REFERENCES \(childTable)" + childKey + onDeleteAction
+                    let column2 = "\(parentTable) REFERENCES \(parentTable)" + parentKey + onDeleteAction
+                    let key = "PRIMARY KEY(\(childTable), \(parentTable))"
+                    let query = "CREATE TABLE \(relationship.name.quoted)(\(column1), \(column2), \(key)) WITHOUT ROWID"
                     queries.append(query)
                 }
                 else if !childKey.isEmpty {
                     var constraint = "FOREIGN KEY" + childKey
-                    constraint += #" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
+                    constraint += " REFERENCES \(parentTable)" + parentKey + onDeleteAction
                     constraints.append(constraint)
                 }
                 else {
-                    var column = #""\#(relationship.name)""#
+                    var column = relationship.name.quoted
                     if !relationship.isOptional {
                         column += " NOT NULL"
                     }
-                    column += #" REFERENCES "\#(parentTable)""# + parentKey + onDeleteAction
+                    column += " REFERENCES \(parentTable)" + parentKey + onDeleteAction
                     columns.append(column)
                 }
                 
@@ -361,9 +361,9 @@ public class SQLiteDataModel {
             }
         }
         
-        constraints += (entity.uniquenessConstraints as! [[String]]).enumerated().map { "\($0.0 == 0 ? "PRIMARY KEY" : "UNIQUE")(\($0.1.map { "\"\($0)\"" }.joined(separator: ",")))" }
+        constraints += (entity.uniquenessConstraints as! [[String]]).enumerated().map { "\($0.0 == 0 ? "PRIMARY KEY" : "UNIQUE")(\($0.1.map { $0.quoted }.joined(separator: ",")))" }
         
-        var query = #"CREATE TABLE "\#(childTable)"(\#((columns + constraints).joined(separator: ", ")))"#
+        var query = "CREATE TABLE \(childTable)(\((columns + constraints).joined(separator: ", ")))"
         if !entity.uniquenessConstraints.isEmpty { query += " WITHOUT ROWID" }
         queries.insert(query, at: 0)
         
@@ -371,25 +371,42 @@ public class SQLiteDataModel {
     }
     
     
-    private func dropTable(_ name: String) throws {
+    private func dropTable(_ tableName: String) throws {
         
-        try execute(#"DROP TABLE "\#(name)""#)
+        try execute("DROP TABLE \(tableName.quoted)")
+    }
+    
+    private func renameTable(_ tableName: String, to newTableName: String) throws {
+        
+        try execute("ALTER TABLE \(tableName.quoted) RENAME TO \(newTableName.quoted)")
     }
     
     
-    private func renameTable(_ name: String, to newName: String) throws {
+    private func addColumn(_ columnName: String, to tableName: String) throws {
         
-        try execute(#"ALTER TABLE "\#(name)" RENAME TO "\#(newName)""#)
+        try execute("ALTER TABLE \(tableName.quoted) ADD \(columnName.quoted)")
     }
     
+    private func dropColumn(_ columnName: String, from tableName: String) throws {
+        
+        // TODO:
+    }
+    
+    private func renameColumn(_ columnName: String, of tableName: String, into newColumnName: String) throws {
+        
+        try execute("ALTER TABLE \(tableName.quoted) RENAME \(columnName.quoted) TO \(newColumnName.quoted)")
+    }
+
     /// Generalized ALTER TABLE procedure will work even if the schema change causes the information stored in the table to change, e.g. dropping a column, changing the order of columns, adding or removing a UNIQUE constraint or PRIMARY KEY, adding CHECK or FOREIGN KEY or NOT NULL constraints, or changing the datatype for a column. https://www.sqlite.org/lang_altertable.html#otheralter
     private func alterTable(with mapping: NSEntityMapping) throws {
         
+        // TODO:
     }
     
     /// Simpler and faster procedure can optionally be used for some changes that do no affect the on-disk content in any way, e.g. removing CHECK or FOREIGN KEY or NOT NULL constraints, or adding, removing, or changing default values on a column. https://www.sqlite.org/lang_altertable.html#otheralter
     private func updateSchema(with mapping: NSEntityMapping) throws {
         
+        // TODO:
     }
     
     
@@ -404,7 +421,12 @@ public class SQLiteDataModel {
 
 extension NSManagedObjectModel {
     
-    var version: Int! {
-        return (versionIdentifiers.first as? String).flatMap(Int.init)
-    }
+    var version: Int! { (versionIdentifiers.first as? String).flatMap(Int.init) }
+}
+
+
+
+extension String {
+    
+    var quoted: String { "\"\(self)\"" }
 }

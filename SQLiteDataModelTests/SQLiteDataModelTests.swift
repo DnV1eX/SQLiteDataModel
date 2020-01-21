@@ -20,6 +20,8 @@ class SQLiteDataModelTests: XCTestCase {
         try! db.execute("PRAGMA foreign_keys = true")
         return db
     }
+    
+    static let model = try! SQLiteDataModel(bundle: Bundle(for: SQLiteDataModelTests.self), sqliteDB: SQLiteDataModelTests.dbURL, profile: true)
 
     
     override class func setUp() {
@@ -27,12 +29,11 @@ class SQLiteDataModelTests: XCTestCase {
     }
 
     
-    func testDBCreation() throws {
+    func testCreation() throws {
         
-        let model = try SQLiteDataModel(bundle: Bundle(for: SQLiteDataModelTests.self), sqliteDB: SQLiteDataModelTests.dbURL, profile: true)
 //        print(model.db)
-        try model.create(by: model.loadModel(1))
-        XCTAssertEqual(try model.currentVersion(), 1)
+        try SQLiteDataModelTests.model.create(by: SQLiteDataModelTests.model.loadModel(1))
+        XCTAssertEqual(try SQLiteDataModelTests.model.currentVersion(), 1)
         
         try db.execute("INSERT INTO Country(name, flag) VALUES ('USA', '🇺🇸'), ('USSR', '🚩'), ('Russia', '🇷🇺'), ('China', '🇨🇳'), ('India', '🇮🇳')")
         
@@ -55,9 +56,8 @@ class SQLiteDataModelTests: XCTestCase {
         }
         try db.execute("INSERT INTO Cosmodrome(name) VALUES ('Baikonur')")
         
-//        try model.migrate(to: model.loadModel(2))
-//        XCTAssertEqual(try model.currentVersion(), 2)
-//
+//        throw NSError(domain: "test error", code: 0, userInfo: nil)
+
 //        row = try db.query("SELECT * FROM Spaceport")
 //        XCTAssertEqual(row?.columnCount, 1)
 //        XCTAssertEqual(row?["name"], "Baikonur")
@@ -66,5 +66,16 @@ class SQLiteDataModelTests: XCTestCase {
 //        XCTAssertThrowsError(try db.query("SELECT * FROM Country"))
 //
 //        try db.execute("INSERT INTO Manufacturer(name) VALUES ('OKB-1'), ('USSR'), ('Russia'), ('China'), ('India')")
+    }
+    
+    
+    func testMigration() {
+        
+        do {
+            try SQLiteDataModelTests.model.migrate(to: SQLiteDataModelTests.model.loadModel(2))
+            XCTAssertEqual(try SQLiteDataModelTests.model.currentVersion(), 2)
+        } catch {
+            XCTFail(error.localizedDescription)
+        }
     }
 }
