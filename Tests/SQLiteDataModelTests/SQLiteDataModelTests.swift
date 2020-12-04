@@ -7,21 +7,13 @@
 
 import XCTest
 @testable import SQLiteDataModel
-import SQift
 
 
-class SQLiteDataModelTests: XCTestCase {
+final class SQLiteDataModelTests: XCTestCase {
 
-//    static let modelURL = Bundle(for: SQLiteDataModelTests.self).url(forResource: "TestModel", withExtension: "momd")!
     static let dbURL = FileManager.default.temporaryDirectory.appendingPathComponent("SQLiteDataModelTestDB").appendingPathExtension("sqlite")
     
-    var db: Connection {
-        let db = try! Connection(storageLocation: .onDisk(SQLiteDataModelTests.dbURL.path))
-        try! db.execute("PRAGMA foreign_keys = true")
-        return db
-    }
-    
-    static let model = try! SQLiteDataModel(bundle: Bundle(for: SQLiteDataModelTests.self), sqliteDB: SQLiteDataModelTests.dbURL, profile: true)
+    static let model = try! SQLiteDataModel(bundle: Bundle.module, sqliteDB: dbURL, profile: true)
 
     
     override class func setUp() {
@@ -35,6 +27,7 @@ class SQLiteDataModelTests: XCTestCase {
         try SQLiteDataModelTests.model.create(by: SQLiteDataModelTests.model.loadModel(1))
         XCTAssertEqual(try SQLiteDataModelTests.model.currentVersion(), 1)
         
+        let db = Self.model
         try db.execute("INSERT INTO Country(name, flag) VALUES ('USA', '🇺🇸'), ('USSR', '🚩'), ('Russia', '🇷🇺'), ('China', '🇨🇳'), ('India', '🇮🇳')")
         
         try db.execute("INSERT INTO Spacecraft(name, launchMass) VALUES ('UFO', 0)")
@@ -43,16 +36,16 @@ class SQLiteDataModelTests: XCTestCase {
         try db.execute("INSERT INTO Spacecraft(name, crewSize, launchMass, origin, firstFlight) VALUES ('Vostok', 1, 4725, 'USSR', '1961-04-12')")
         try db.execute("INSERT INTO Spacecraft(name, crewSize, launchMass, origin, firstFlight) VALUES ('Mercury', 1, 1830, 'USA', '1961-05-05')")
 
-        if let row = try db.query("SELECT * FROM Spacecraft, Country AS c ON origin = c.name ORDER BY firstFlight") {
-            XCTAssertEqual(row.columnCount, 7)
-            XCTAssertEqual(row["crewSize"], 1)
+        let rows = try db.request("SELECT * FROM Spacecraft, Country AS c ON origin = c.name ORDER BY firstFlight")
+        XCTAssertEqual(rows.count, 2)
+        if let row = rows.first {
+            XCTAssertEqual(row.count, 6)
+            XCTAssertEqual(row["crewSize"], "1")
             XCTAssertEqual(row["name"], "Vostok")
-            XCTAssertEqual(row["launchMass"], 4725)
+            XCTAssertEqual(row["launchMass"], "4725")
             XCTAssertEqual(row["origin"], "USSR")
             XCTAssertEqual(row["flag"], "🚩")
             XCTAssertNotEqual(row["flag"], "🇺🇸")
-        } else {
-            XCTFail("Spacecraft not found")
         }
         try db.execute("INSERT INTO Cosmodrome(name) VALUES ('Baikonur')")
         
@@ -78,4 +71,10 @@ class SQLiteDataModelTests: XCTestCase {
             XCTFail(error.localizedDescription)
         }
     }
+    
+    
+    static var allTests = [
+        ("testCreation", testCreation),
+        ("testMigration", testMigration),
+    ]
 }

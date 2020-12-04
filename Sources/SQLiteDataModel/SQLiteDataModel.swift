@@ -193,7 +193,7 @@ public class SQLiteDataModel {
     
     // MARK: - SQLite3 Library Wrappers
 
-    private func execute(_ query: String) throws {
+    func execute(_ query: String) throws {
         
         var errMsg: UnsafeMutablePointer<Int8>?
         let result = sqlite3_exec(db, query, nil, nil, &errMsg)
@@ -207,39 +207,33 @@ public class SQLiteDataModel {
     }
     
     
-    private func request(_ query: String) throws -> [[String: String]] {
+    func request(_ query: String) throws -> [[String: String]] {
         
-        class Callback {
-            let group = DispatchGroup()
-            var result = [[String: String]]()
+        final class Callback {
+            var response = [[String: String]]()
         }
         
-        var errMsg: UnsafeMutablePointer<Int8>?
         let callback = Callback()
-        callback.group.enter()
+        var errMsg: UnsafeMutablePointer<Int8>?
+        
         let result = sqlite3_exec(db, query, { callback, count, values, columns in
-            let callback = Unmanaged<Callback>.fromOpaque(callback!).takeUnretainedValue()
-            var row = [String: String]()
-            for i in 0..<Int(count) {
-                guard let value = values?[i], let column = columns?[i] else { continue }
-                row[String(cString: column)] = String(cString: value)
-            }
             if count > 0 {
-                callback.result.append(row)
+                let callback = Unmanaged<Callback>.fromOpaque(callback!).takeUnretainedValue()
+                var row = [String: String]()
+                for i in 0..<Int(count) {
+                    guard let value = values?[i].map({ String(cString: $0) }), let column = columns?[i].map({ String(cString: $0) }), row[column] == nil else { continue }
+                    row[column] = value
+                }
+                callback.response.append(row)
             }
-            callback.group.leave()
             return SQLITE_OK
         }, Unmanaged.passUnretained(callback).toOpaque(), &errMsg)
+        
         guard result == SQLITE_OK else {
             throw Error.sqLiteError(code: result, message: errMsg)
         }
         
-        switch callback.group.wait(timeout: .now() + 5) {
-        case .success:
-            return callback.result
-        case .timedOut:
-            throw Error.sqLiteRequestTimeout
-        }
+        return callback.response
     }
     
     
